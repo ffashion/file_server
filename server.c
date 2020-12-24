@@ -34,7 +34,7 @@ int server_listen(){
 int accept_request(int server_fd){
     struct sockaddr_in tmp_sock = {0};
     tmp_sock.sin_family = AF_INET;
-    tmp_sock.sin_port = 0; //绑定随机端口
+    tmp_sock.sin_port = 0; //accept设定随机端口
     tmp_sock.sin_addr.s_addr = inet_addr(LISTEN_ADDR);
     socklen_t tmp_sock_len = sizeof(tmp_sock);
     int client_fd = accept(server_fd,(struct sockaddr*)&tmp_sock,&tmp_sock_len);
@@ -81,14 +81,20 @@ int main(int argc,char *args[]){
     char *filename = "test.txt";
     int server_fd = server_listen();
     int client_fd = -1;
-    struct package_t package = {0};
+    struct package package = {0};
     //pthread_create();
     while(1){
         client_fd= accept_request(server_fd);
+        
+        package.package_len = 4 + strlen(filename)+1 + get_file_size(filename);
+        package.filename_len = strlen(filename) +1;
+        package.file_content_len = get_file_size(filename);
         package.filename = filename;
         package.file_content = set_file2buf(filename);
-        package.package_len = 4 + strlen(filename)+1 + get_file_size(filename);
+        
         write(client_fd,&package.package_len,4);
+        write(client_fd,&package.filename_len,4);
+        write(client_fd,&package.file_content_len,4);
         write(client_fd,package.filename,strlen(filename)+1);
         write(client_fd,package.file_content,get_file_size(filename));
         

@@ -78,7 +78,13 @@ char  *set_file2buf(char *filename){
 }
 
 int main(int argc,char *args[]){
-    char *filename = "test.txt";
+     char *filename = NULL;
+    if(argc >= 2){
+        filename = "test.txt";
+    }else{
+        printf("请指定要传输的文件\n");
+        exit(-1);
+    }
     int server_fd = server_listen();
     int client_fd = -1;
     struct package package = {0};
@@ -97,7 +103,6 @@ int main(int argc,char *args[]){
         write(client_fd,&package.file_content_len,4);
         write(client_fd,package.filename,strlen(filename)+1);
         write(client_fd,package.file_content,get_file_size(filename));
-        
         close(client_fd);
     }
     

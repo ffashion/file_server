@@ -19,7 +19,7 @@ int main(int argc,char *args[]){
     
     struct package receive_package = {0};
     receive_package.filename = malloc(100);
-    receive_package.file_content = malloc(10000);
+    
     if(connect(client_fd,(struct sockaddr *)&client,sizeof(client)) == -1){
         printf("连接服务器失败");
     }
@@ -38,9 +38,11 @@ int main(int argc,char *args[]){
     printf("%s\n",receive_package.filename);
 
     read(client_fd,receive_package.file_content,receive_package.file_content_len);
-    fp = fopen(receive_package.filename,"w+");
-    fwrite(receive_package.file_content,1,receive_package.file_content_len,fp);
     
+    fp = fopen(receive_package.filename,"w+");
+    receive_package.file_content = malloc(receive_package.file_content_len);
+    
+    fwrite(receive_package.file_content,1,receive_package.file_content_len,fp);
 
     close(client_fd);
     free(receive_package.filename);

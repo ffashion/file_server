@@ -7,7 +7,34 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <errno.h>
 #include "client.h"
+//保证读取数据的完整性
+int read_n(int fd,void *vptr,size_t n){
+    //记录还差多少字节读完
+    size_t nleft = n;
+    //已经每次read的数量
+    ssize_t nread;
+    char *ptr = vptr;
+    //判断nleft的大小
+    while (nleft > 0) {
+        if ( (nread = read(fd, ptr, nleft)) < 0) {
+            if (errno == EINTR)
+                nread = 0;        /* and call read() again */
+            else
+                return -1;
+        } else if (nread == 0){
+            break;         /* EOF */
+        }
+                   
+
+        nleft -= nread;
+        ptr   += nread;
+    }
+    return n - nleft;     /* return >= 0 */
+ 
+}
+
 
 int main(int argc,char *args[]){
     FILE *fp = NULL;
@@ -28,6 +55,7 @@ int main(int argc,char *args[]){
     
 
     read(client_fd,&receive_package.package_len,4);
+    
     printf("package len:%d\n",receive_package.package_len);
     
     read(client_fd,&receive_package.filename_len,4);
@@ -42,46 +70,28 @@ int main(int argc,char *args[]){
     char *new_filename = malloc(100);
     strcat(new_filename,"new_");
     strcat(new_filename,receive_package.filename);
-    fp = fopen(new_filename,"wb+");
+    fp = fopen(new_filename,"wb");
 
     receive_package.file_content = malloc(receive_package.file_content_len);
 
-    //记录已读如内存的2048个数
-    //int i = 0;
     
-    int get_file_content_section_num = receive_package.file_content_len / 2048; //以2048分片
-    int Last_bytes = receive_package.file_content_len % 2048; 
-    
-    for(int i=0;i<=get_file_content_section_num -1;i++){
-        if(read(client_fd,(uint8_t *)receive_package.file_content + 2048*i,2048) == -1){
-            printf("read error");
+    char *buffer = malloc(2048);
+    memset(buffer,0,2048);
+    int file_content_section_num = receive_package.file_content_len / SECTION_SIZE; //以2048分片
+    int last_bytes = receive_package.file_content_len % SECTION_SIZE;
+    for(int i=0;i<=file_content_section_num-1;i++){
+        if(read_n(client_fd,(uint8_t *)receive_package.file_content+SECTION_SIZE*(i),SECTION_SIZE) == -1){
+            printf("read error\n");
         }
     }
-
-    if(read(client_fd,(uint8_t *)receive_package.file_content + 2048*get_file_content_section_num,Last_bytes) == -1){
-            printf("read error");
+    if(read_n(client_fd,(uint8_t *)receive_package.file_content+SECTION_SIZE*file_content_section_num,last_bytes) == -1){
+            printf("read error\n");
     }
-    
-    // while(1){
-    //     if(receive_package.file_content_len )
 
-    //     if(read(client_fd,(uint8_t *)receive_package.file_content + 2048*i,2048) == -1){
-            
-    //         read(client_fd,(uint8_t *)receive_package.file_content + 2048*i,receive_package.file_content_len-2048*i);
-    //         i++;
-    //         //exit(-1);
-    //     }else{
-    //         i++;
-    //     }
 
-    //     if(2048*i >= receive_package.file_content_len){
-    //         break;
-    //     }
-        
-    // }
     
     if(fwrite(receive_package.file_content,1,receive_package.file_content_len,fp) == -1){
-        printf("fwrite error");
+        printf("fwrite error\n");
     }
     
 

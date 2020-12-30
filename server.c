@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <errno.h>
 #include "server.h"
 int server_listen(){
     struct sockaddr_in server = {0};
@@ -78,6 +79,29 @@ char  *set_file2buf(char *filename){
     return file_buf;
 
 }
+//自动write 第一次write不够的字节
+//保证完整写入n个字节
+int write_n(int fd,void *vptr,size_t n){
+    //
+    size_t nleft = n;
+    //
+    ssize_t nwritten = 0;
+    char *ptr = vptr;
+    while(nleft > 0 ){
+        if( (nwritten = write(fd,ptr,nleft)) <= 0 ){
+            if(nwritten < 0 && errno == EINTR){
+                nwritten = 0; //写入0字节 ，call again
+            }else{
+                return -1;//error
+            }
+        }
+        nleft -= nwritten;
+        ptr += nwritten;
+    }
+
+    return n;
+
+}
 
 int main(int argc,char *args[]){
      char *filename = NULL;
@@ -95,40 +119,41 @@ int main(int argc,char *args[]){
     int def_sock_buf_size = -1;
     socklen_t opt_len;
     
+    package.package_len = 4 + 4 + 4 + strlen(filename)+1 + file_size;
+    package.filename_len = strlen(filename) +1;
+    package.file_content_len = file_size;
+    package.filename = filename;
+    package.file_content = set_file2buf(filename);
+    
+    int file_content_section_num = package.file_content_len / SECTION_SIZE; //以2048分片
+    int last_bytes = package.file_content_len % SECTION_SIZE;
+    
+    //一共write的数据量
+    int sended_number = 0;
+    //每次write的数据量
+    int each_write_number_tmp = 0;
+
+
+
     //pthread_create();
     while(1){
         client_fd= accept_request(server_fd);
-        getsockopt(client_fd,SOL_SOCKET, SO_SNDBUF,&def_sock_buf_size,&opt_len);
-        
-        
-        package.package_len = 4 + 4 + 4 + strlen(filename)+1 + file_size;
-        package.filename_len = strlen(filename) +1;
-        package.file_content_len = file_size;
-        package.filename = filename;
-        package.file_content = set_file2buf(filename);
-        
-
         write(client_fd,&package.package_len,4);
         write(client_fd,&package.filename_len,4);
         write(client_fd,&package.file_content_len,4);
-        write(client_fd,package.filename,strlen(filename)+1);
+        write(client_fd,package.filename,package.filename_len);
         
-        int get_file_content_section_num = package.file_content_len / 2048; //以2048分片
-        int Last_bytes = package.file_content_len % 2048; 
-        
-        for(int i=0;i<=get_file_content_section_num -1;i++){
-            if(write(client_fd,(uint8_t *)package.file_content + 2048*i,2048) == -1){
-                printf("write error");
+        for(int i=0;i<=file_content_section_num-1;i++){
+            if(write_n(client_fd,(uint8_t *)package.file_content+SECTION_SIZE*i,SECTION_SIZE) == -1){
+                printf("write error\n");
             }
         }
-
-        if(write(client_fd,(uint8_t *)package.file_content + 2048*get_file_content_section_num,Last_bytes) == -1){
-                printf("write error");
+        if(write_n(client_fd,(uint8_t *)package.file_content+SECTION_SIZE*file_content_section_num,last_bytes) == -1){
+                printf("write error\n");
         }
-        //for test 说明内存内容每次,socket 套接字传输有问题
-        // FILE * fp_test = NULL;
-        // fp_test = fopen("what.mp4","wb+");;
-        // fwrite(package.file_content,1,package.file_content_len,fp_test);
+
+
+        shutdown(client_fd,SHUT_RDWR);//直到客户端拿到数据再关闭socket
         
         close(client_fd);
     }

@@ -1,19 +1,57 @@
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <netinet/in.h>
-#include<arpa/inet.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <netdb.h>
 #include <errno.h>
+#include <openssl/md5.h>
+#include <fcntl.h> 
+#include <sys/stat.h>
+#include <sys/mman.h>
 #include "server.h"
-int server_listen(){
+char *get_file_open(char *filename,size_t *file_size_p,int *fd_p){
+    struct stat file_stat;
+    char *result;
+    if((*fd_p = open(filename,O_RDWR)) == -1){
+        perror("open");
+        exit(-1);
+    }
+    if(stat(filename,&file_stat) == -1){
+        perror("stat");
+        exit(-1);
+    }
+    *file_size_p= file_stat.st_size;
+    if( (result = mmap(NULL,*file_size_p,PROT_READ,MAP_PRIVATE,*fd_p,0)) == NULL){
+        perror("mmap");
+        exit(-1);
+    }
+    return result;
+}
+
+int get_file_close(char *addr,size_t length,int fd){
+    //参数1传get_file_open的返回值 参数2传文件的长度
+    if(munmap(addr,length) == -1){
+        perror("munmap");
+        return -1;
+    }
+    close(fd);
+    return 0;
+}
+int server_listen(int port){
     struct sockaddr_in server = {0};
     server.sin_family =  AF_INET;
-    server.sin_port = htons(LISTEN_PORT);
     server.sin_addr.s_addr = inet_addr(LISTEN_ADDR);
+    if(port == 0){
+        server.sin_port = htons(LISTEN_PORT);
+    }else{
+        server.sin_port = htons(port);
+    }
     int server_fd = -1;
     if( (server_fd = socket(AF_INET,SOCK_STREAM,0)) == -1){
         printf("socket create error\n");
@@ -47,6 +85,7 @@ int accept_request(int server_fd){
     printf("accept ok\n");
     return client_fd;
 }
+//未使用 
 long get_file_size(char *filename){
     FILE *fp = NULL;
     
@@ -60,6 +99,7 @@ long get_file_size(char *filename){
     fclose(fp);
     return file_size;
 }
+//未使用
 char  *set_file2buf(char *filename){
     FILE *fp = NULL;
     long file_size;
@@ -73,8 +113,8 @@ char  *set_file2buf(char *filename){
     
     memset(file_buf,0,file_size);
     rewind(fp);//设置当前的读取偏移位置为文件开头
-    fread(file_buf,1,file_size,fp);
-    
+    //fread(file_buf,1,file_size,fp);
+    fread(file_buf,file_size,1,fp);
     fclose(fp);
     return file_buf;
 
@@ -103,41 +143,27 @@ int write_n(int fd,void *vptr,size_t n){
 
 }
 
-int main(int argc,char *args[]){
-     char *filename = NULL;
-    if(argc >= 2){
-        filename = args[1];
-    }else{
-        printf("请指定要传输的文件\n");
-        exit(-1);
-    }
+//TODO
+int md5_compute(){
     
-    int server_fd = server_listen();
-    int client_fd = -1;
-    struct package package = {0};
-    long file_size = get_file_size(filename);
-    int def_sock_buf_size = -1;
-    socklen_t opt_len;
-    
-    package.package_len = 4 + 4 + 4 + strlen(filename)+1 + file_size;
-    package.filename_len = strlen(filename) +1;
-    package.file_content_len = file_size;
-    package.filename = filename;
-    package.file_content = set_file2buf(filename);
-    
-    int file_content_section_num = package.file_content_len / SECTION_SIZE; //以2048分片
-    int last_bytes = package.file_content_len % SECTION_SIZE;
-    
-    //一共write的数据量
-    int sended_number = 0;
-    //每次write的数据量
-    int each_write_number_tmp = 0;
-
-
-
-    //pthread_create();
-    while(1){
+    return 0;
+}
+int process_once_request(int server_fd,size_t file_size,char *filename,char *file_content_addr){
+        
+        int client_fd = -1;
+        struct package package = {0};
+        package.package_len = 4 + 4 + 4 + strlen(filename)+1 + file_size;
+        package.filename_len = strlen(filename)+1;
+        package.file_content_len = file_size;
+        package.filename = filename;
+        package.file_content = file_content_addr;
+        
+        int file_content_section_num = package.file_content_len / SECTION_SIZE; //以2048分片
+        int last_bytes = package.file_content_len % SECTION_SIZE;
+        
         client_fd= accept_request(server_fd);
+
+
         write(client_fd,&package.package_len,4);
         write(client_fd,&package.filename_len,4);
         write(client_fd,&package.file_content_len,4);
@@ -152,10 +178,34 @@ int main(int argc,char *args[]){
                 printf("write error\n");
         }
 
-
         shutdown(client_fd,SHUT_RDWR);//直到客户端拿到数据再关闭socket
-        
         close(client_fd);
+        printf("文件传输完成\n");
+}
+int main(int argc,char *argv[]){
+    char *filename = NULL;
+    int port;
+    if(argc == 1){
+        printf("Usage: ./server filename [port]\n");
+        exit(-1);
+    }else if(argc == 2){
+        filename = argv[1];
+        port = 0;
+    }else if(argc == 3){
+        filename = argv[1];
+        port = atoi(argv[2]);
     }
+    int server_fd = server_listen(port);
+    size_t file_size;
+    int fd;
+    char *file_buffer;
+    file_buffer = get_file_open(filename,&file_size,&fd);
+
+    while(1){
+        process_once_request(server_fd,file_size,filename,file_buffer);
+    }
+    //这里没啥用 2333 
+    get_file_close(file_buffer,file_size,fd);
+    
     
 }

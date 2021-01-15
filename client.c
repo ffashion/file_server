@@ -36,13 +36,28 @@ int read_n(int fd,void *vptr,size_t n){
 }
 
 
-int main(int argc,char *args[]){
-    FILE *fp = NULL;
-    
+int main(int argc,char *argv[]){
     struct sockaddr_in client = {0};
     client.sin_family =  AF_INET;
-    client.sin_port = htons(8082);
-    client.sin_addr.s_addr = inet_addr("192.168.123.144");
+    if(argc <= 1){
+        printf("Usage: ./client [ip] [port]\n");
+        printf("连接到127.0.0.1:8082\n");
+        client.sin_addr.s_addr = inet_addr(DEFAULT_ADDR);
+        client.sin_port = htons(DEFAULT_PORT);
+    }else if(argc == 2){
+        printf("连接到默认端口8082\n");
+        client.sin_addr.s_addr = inet_addr(argv[1]);
+        client.sin_port = htons(DEFAULT_PORT);
+    }else if(argc == 3){
+        //printf("连接到指定ip和端口\n");
+        client.sin_addr.s_addr = inet_addr(argv[1]);
+        client.sin_port = htons((uint16_t)atoi(argv[2]));
+    }
+
+    
+    FILE *fp = NULL;
+    
+    
     int client_fd = socket(AF_INET,SOCK_STREAM,0);
     
     struct package receive_package = {0};
@@ -50,10 +65,9 @@ int main(int argc,char *args[]){
 
 
     if(connect(client_fd,(struct sockaddr *)&client,sizeof(client)) == -1){
-        printf("连接服务器失败");
+        perror("连接服务器失败");
+        exit(-1);
     }
-    
-
     read(client_fd,&receive_package.package_len,4);
     
     printf("package len:%d\n",receive_package.package_len);
@@ -79,6 +93,8 @@ int main(int argc,char *args[]){
     memset(buffer,0,2048);
     int file_content_section_num = receive_package.file_content_len / SECTION_SIZE; //以2048分片
     int last_bytes = receive_package.file_content_len % SECTION_SIZE;
+    
+    
     for(int i=0;i<=file_content_section_num-1;i++){
         if(read_n(client_fd,(uint8_t *)receive_package.file_content+SECTION_SIZE*(i),SECTION_SIZE) == -1){
             printf("read error\n");

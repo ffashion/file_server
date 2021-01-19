@@ -14,6 +14,8 @@
 #include <fcntl.h> 
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
 #include "server.h"
 char *get_file_open(char *filename,size_t *file_size_p,int *fd_p){
     struct stat file_stat;
@@ -148,6 +150,7 @@ int md5_compute(){
     
     return 0;
 }
+
 int process_once_request(int server_fd,size_t file_size,char *filename,char *file_content_addr){
         
         int client_fd = -1;

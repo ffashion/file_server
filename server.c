@@ -24,6 +24,7 @@ char *get_file_open(char *filename,size_t *file_size_p,int *fd_p){
         perror("open");
         exit(-1);
     }
+    //get file state
     if(stat(filename,&file_stat) == -1){
         perror("stat");
         exit(-1);
@@ -55,7 +56,7 @@ int server_listen(int port){
         server.sin_port = htons(port);
     }
     int server_fd = -1;
-    if( (server_fd = socket(AF_INET,SOCK_STREAM,0)) == -1){
+    if( (server_fd = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP)) == -1){
         printf("socket create error\n");
         exit(-1);
     }
@@ -75,10 +76,7 @@ int server_listen(int port){
 }
 int accept_request(int server_fd){
     struct sockaddr_in tmp_sock = {0};
-    tmp_sock.sin_family = AF_INET;
-    tmp_sock.sin_port = 0; //accept设定随机端口
-    tmp_sock.sin_addr.s_addr = inet_addr(LISTEN_ADDR);
-    socklen_t tmp_sock_len = sizeof(tmp_sock);
+    socklen_t tmp_sock_len;
     int client_fd = accept(server_fd,(struct sockaddr*)&tmp_sock,&tmp_sock_len);
     if(client_fd == -1){
         printf("accept error\n");
@@ -87,7 +85,7 @@ int accept_request(int server_fd){
     printf("accept ok\n");
     return client_fd;
 }
-//未使用 
+//未使用
 long get_file_size(char *filename){
     FILE *fp = NULL;
     
@@ -140,9 +138,7 @@ int write_n(int fd,void *vptr,size_t n){
         nleft -= nwritten;
         ptr += nwritten;
     }
-
     return n;
-
 }
 
 //TODO
@@ -152,7 +148,6 @@ int md5_compute(){
 }
 
 int process_once_request(int server_fd,size_t file_size,char *filename,char *file_content_addr){
-        
         int client_fd = -1;
         struct package package = {0};
         package.package_len = 4 + 4 + 4 + strlen(filename)+1 + file_size;
@@ -209,6 +204,5 @@ int main(int argc,char *argv[]){
     }
     //这里没啥用 2333 
     get_file_close(file_buffer,file_size,fd);
-    
     
 }
